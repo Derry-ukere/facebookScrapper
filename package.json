@@ -5,9 +5,12 @@
   "main": "app.js",
   "type": "module",
   "dependencies": {
+    "@azure/ai-text-analytics": "^5.0.0",
     "express": "^4.17.1",
+    "mongoose": "^5.12.3",
     "puppeteer": "^8.0.0",
     "request": "^2.88.2",
+    "uuid": "^8.3.2",
     "xlsx": "^0.16.9"
   },
   "devDependencies": {},

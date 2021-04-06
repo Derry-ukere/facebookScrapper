@@ -29,23 +29,23 @@ const location = [
   'london area 5',
 ]
 
-function presentComments(fileName) {
-  const res = commenters.map((commenter, i) => ({
-    commenter,
-    comment: comments[i],
-  }))
-  const wb = xlxs.utils.book_new()
-  const ws = xlxs.utils.json_to_sheet(res)
-  xlxs.utils.book_append_sheet(wb, ws)
-  xlxs.writeFile(wb, fileName)
-}
+// function presentComments(fileName) {
+//   const res = commenters.map((commenter, i) => ({
+//     commenter,
+//     comment: comments[i],
+//   }))
+//   const wb = xlxs.utils.book_new()
+//   const ws = xlxs.utils.json_to_sheet(res)
+//   xlxs.utils.book_append_sheet(wb, ws)
+//   xlxs.writeFile(wb, fileName)
+// }
 
-function presentPosts(scrappedPosts) {
-  const wb = xlxs.utils.book_new()
-  const ws = xlxs.utils.json_to_sheet(res)
-  xlxs.utils.book_append_sheet(wb, ws)
-  xlxs.writeFile(wb, scrappedPosts)
-}
+// function presentPosts(scrappedPosts) {
+//   const wb = xlxs.utils.book_new()
+//   const ws = xlxs.utils.json_to_sheet(res)
+//   xlxs.utils.book_append_sheet(wb, ws)
+//   xlxs.writeFile(wb, scrappedPosts)
+// }
 
 function generateName() {
   const day = new Date()
@@ -65,3 +65,69 @@ function generateName() {
 const names = generateName()
 const postName = names[0]
 const commentName = names[1]
+
+function presentComments(fileName) {
+  const res = commenters.map((commenter, i) => ({
+    commenter,
+    comment: comments[i],
+  }))
+}
+
+function presentPosts(scrappedPosts, name) {
+  try {
+    const wb = xlxs.utils.book_new()
+    const ws = xlxs.utils.json_to_sheet(scrappedPosts)
+    xlxs.utils.book_append_sheet(wb, ws)
+    xlxs.writeFile(wb, name)
+  } catch (error) {
+    console.log('customized error!!', error)
+  }
+}
+
+function convert(urls) {
+  let container = []
+  for (const url of urls) {
+    let alink = url.split('')
+    if (alink[8] === 'm') {
+      alink[8] = 'free'
+      container.push(alink.join(''))
+    } else {
+      urls.slice(8, 1)
+    }
+  }
+  return container
+}
+
+export function helloFunc(string) {
+  return string
+}
+
+export function consl() {
+  console.log('hello word!!')
+}
+
+function presentComments(fileName) {
+  const res = commenters.map((commenter, i) => ({
+    commenter,
+    comment: comments[i],
+  }))
+}
+
+function presentPosts(scrappedPosts, name) {
+  try {
+    const wb = xlxs.utils.book_new()
+    const ws = xlxs.utils.json_to_sheet(scrappedPosts)
+    xlxs.utils.book_append_sheet(wb, ws)
+    xlxs.writeFile(wb, name)
+  } catch (error) {
+    console.log('customized error!!', error)
+  }
+}
+
+function trimComments(arr) {
+  for (const element of arr) {
+    if (!element.match(/^\ww$/)) {
+      console.log(element)
+    }
+  }
+}

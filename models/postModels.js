@@ -10,6 +10,9 @@ const postSchema = mongoose.Schema({
   Date: {
     type: String,
   },
+  tag: {
+    type: String,
+  },
 })
 
 const Post = mongoose.model('Post', postSchema)

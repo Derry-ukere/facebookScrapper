@@ -1,7 +1,13 @@
 import puppeteer from 'puppeteer'
 import Post from './models/postModels.js'
 import Comment from './models/commentsModel.js'
-import { saveToDataBase } from './dataBase.js'
+import Link from './models/LinkModel.js'
+import {
+  saveToDataBase,
+  getLinksFromDb,
+  saveLinkToDataBase,
+} from './dataBase.js'
+import { v4 as uuidv4 } from 'uuid'
 
 const browser = await puppeteer.launch({
   headless: false,
@@ -15,7 +21,7 @@ const navigationPromise = page.waitForNavigation({
   waitUntil: 'domcontentloaded',
 })
 
-// methods
+// Methods
 async function login(email, password) {
   return new Promise(async function (resolve, reject) {
     console.log('logging in ...')
@@ -44,11 +50,14 @@ async function login(email, password) {
     await navigationPromise
     await page.waitForTimeout(3000)
     await page.waitForSelector('#root')
-    console.log('redirecting to page ...')
+    // ;(await page.$('button.bg'))
+    // await page.click('button.bg')
+    // await navigationPromise
+    // await page.waitForTimeout(3000)
+    console.log('redirecting!!')
     resolve()
   })
 }
-
 async function getLinks(url) {
   return new Promise(async function (res, rej) {
     try {
@@ -60,34 +69,33 @@ async function getLinks(url) {
         '#m_group_stories_container > div > a > span'
       )
       // get  links
-      let x = 0
-      while (x < 41) {
+      let x = 1
+      while (true) {
         await page.click('#m_group_stories_container > div > a > span')
         console.log(`clicked  ${x} times`)
-        let number = Math.floor(Math.random() * 3000) + 1000
+        let number = Math.floor(Math.random() * 3000) + 2000
         await page.waitForTimeout(number)
+        await navigationPromise
         const links = await page.$$eval(
-          'footer > div > a:nth-child(7)',
+          'article > footer > div:nth-child(2) > a:nth-child(5)', //a:nth-child(7)
           (links) => links.map((element) => element.href)
         )
-        container.push(links)
+        // container.push(links)
+        const newLinks = presentLinkForDataBase(links) // present links in mongodb format
+        console.log('totalLinks: ', newLinks.length)
+        saveLinkToDataBase(Link, newLinks) // save links to database
         x++
       }
-      let allLinks = container.reduce((store, current) => {
-        return store.concat(current)
-      })
-      console.log(allLinks)
-      res(allLinks)
+      res()
     } catch (error) {
       console.log(error)
     }
   })
 }
-
 function convert(urls) {
   let container = []
   for (const url of urls) {
-    let alink = url.split('')
+    let alink = url.link.split('')
     if (alink[8] === 'm') {
       alink[8] = 'free'
       container.push(alink.join(''))
@@ -97,45 +105,67 @@ function convert(urls) {
   }
   return container
 }
-
 function convertOne(url) {
-  let alink = url.split('')
+  let alink = url.link.split('')
   alink[8] = 'free'
   let newLink = alink.join('')
   return newLink
 }
-
 async function getAllComments(urls) {
   return new Promise(async function (resolve) {
     let container = []
+    let x = 1
     for (const url of urls) {
+      console.log(`getting comments ${x}... `)
       const data = await getOneComment(url)
       container.push(data)
+      console.log('single comment: ', data)
+      x++
     }
     let data = container.reduce((store, current) => {
       return store.concat(current)
     })
     resolve(data)
+    console.log('getting comments completed..')
   })
 }
-async function grabComments() {
+async function grabComments(inputTag) {
   return new Promise(async function (resolve) {
     try {
+      const check = (await page.$('#see_prev_2860120224243683 > a'))
+        ? true
+        : false
       const Commenter = await page.$$eval(
         'div#m_story_permalink_view > div:nth-child(2) > div > div:nth-child(4) > div > div > h3',
         (comment) => comment.map((comment) => comment.textContent)
       )
 
       const Comment = await page.$$eval(
-        'div#m_story_permalink_view > div:nth-child(2) > div > div:nth-child(4) > div > div > div',
+        'div#m_story_permalink_view > div:nth-child(2) > div > div:nth-child(4) > div > div > div:nth-child(2)',
         (commenter) => commenter.map((commenter) => commenter.textContent)
       )
 
-      const filteredComments = Comment.filter(predicateFunc)
+      // get commenter link
+      const commentersLinks = await page.$$eval(
+        'div#m_story_permalink_view > div:nth-child(2) > div > div:nth-child(4) > div > div > h3 > a',
+        (link) => link.map((link) => link.href)
+      )
+      const Poster = await page.$eval(
+        'tbody h3',
+        (poster) => poster.textContent
+      )
+      const Date = await page.$eval('abbr', (date) => date.textContent)
 
+      const tag = inputTag
+      // pass commenter link to a function and get loctions pushed to an array and return array
+      // const location = await getCommentersLocation(commentersLinks)
+
+      // map and add locations to data
+      const filteredComments = Comment.filter(predicateFunc)
       const data = Commenter.map((Commenter, index) => ({
         Commenter,
         Comment: filteredComments[index],
+        tag,
       }))
       resolve(data)
     } catch (error) {
@@ -143,23 +173,22 @@ async function grabComments() {
     }
   })
 }
-async function getOneComment(url) {
+async function getOneComment(url, tag) {
   return new Promise(async function (resolve) {
     try {
       await page.goto(url)
-      console.log('getting comments... ')
       await navigationPromise
       let number = Math.floor(Math.random() * 3000) + 1000
       await page.waitForTimeout(number)
       // get comments
-      const data = await grabComments()
+      const data = await grabComments(tag)
+      console.log('single comment: ', data)
       resolve(data)
     } catch (error) {
       console.log('An error occured-- description: ', error)
     }
   })
 }
-
 const predicateFunc = (element) => {
   return (
     !element.match(/^\d/) &&
@@ -170,18 +199,21 @@ const predicateFunc = (element) => {
 }
 async function getPosts(urls) {
   return new Promise(async function (resolve) {
-    console.log('getting posts... ')
     const container = []
+    let x = 1
     for (const url of urls) {
-      const info = await getPost(url)
+      console.log(`getting posts...${x} `)
+      const info = await getSinglePost(url)
       container.push(info)
+      console.log('single post: ', info)
+      x++
     }
+    console.log('getting post completed..')
     resolve(container)
-    console.log('completed..')
   })
 }
 
-function grabPost(url) {
+function grabPostInfo(url, inputTag) {
   return new Promise(async function (resolve) {
     try {
       await page.goto(url)
@@ -198,10 +230,15 @@ function grabPost(url) {
       )
       const Date = await page.$eval('abbr', (date) => date.textContent)
 
+      // const PostersLink = await page.$eval('tbody h3 a', (link) => link.href)
+      // const location = await getOneLocation(PostersLink)
+      const tag = inputTag
       const info = {
         Post,
         Poster,
         Date,
+        // location,
+        tag,
       }
       resolve(info)
     } catch (error) {
@@ -210,28 +247,148 @@ function grabPost(url) {
     }
   })
 }
-async function getPost(url) {
+async function getSinglePost(url, tag) {
   return new Promise(async function (resolve) {
-    console.log('getting post... ')
-    const info = await grabPost(url)
+    const info = await grabPostInfo(url, tag)
+    console.log('single post: ', info)
     resolve(info)
   })
 }
+// async function getOneLocation(url) {}
+async function getCommentersLocation(urls) {
+  return new Promise(async function (resolve) {
+    const container = []
+    for (const url of urls) {
+      try {
+        await page.goto(url)
+        await navigationPromise
+        let number = Math.floor(Math.random() * 3000) + 1000
+        await page.waitForTimeout(number)
+        let location = ''
+        const checkLocationOne = await page.$('#living > div > div > div')
+        const checkLocationTwo = await page.$(
+          '#root div div div:nth-child(2) span'
+        )
 
-export async function fetchData() {
-  return new Promise(async (resolve) => {
-    await login('ukderry@gmail.com', 'Lootingavenger101')
-    await navigationPromise
-    const allLinks = await getLinks(
-      'https://free.facebook.com/groups/WilsonsDisease/?refid=46&__xts__%5B0%5D=12.Abp_rVK8PhMrrvkpB4HV2eygRU67cZrXFs-k-0Uk9tQp35-XLNga_Gm7WWJR86jMw5twFBNKRVcjxeKXfvgJwK8s1niE7THzqmnDi_wICuVjd0xJaNzzoYfZDGM8bvKvEH6QZet5v7t8Wc6xyXdEfwgz0N43uyzIDXCPXefYWPa7qQo-Gds8WAtWvINs0pPUYe8c8lu9aY_K5Bd_45s3dPZOVFArYRa3gNufA9MdiXubv7LecRd4UgVs6WTfDKgUZfFRGRFzYwn9MZQ-ogSIrkQA-tNbLv3zEwhWygWzZq4Wjhav2S85FCqHzrYAESRFv3KNU2XXUvpzMtKCUu3PqCVpkn4Wwz-3gfC81uP2USkfTMhpOFMkHVScLq-F0nmYDeu4PjOhq0Y2f6AzoRTyFpU6RhTTkhe4zf3bWiVxEsTBV25zqyn6ydA1nHk766_CVzEwBlwsNHhxKRzpUXurHnUvMmrS-iC18N4-PvomkHtvqDkOxc2hqUgzveVCO0NyIC2aZJTDDNlprJXTGue5O3m4NV49PqP9qUa7TK51hufDnxkr6CFumInI8uAX6Z0nAHNgtqf9-BwfqwLi6q9wd44P&_rdc=1&_rdr'
-    )
-    const comments = await getAllComments(convert(allLinks))
-    const posts = await getPosts(convert(allLinks))
-    resolve([posts, comments])
-    browser.close()
+        if (checkLocationOne) {
+          location = await page.$eval(
+            '#living > div > div > div  ',
+            (link) => link.innerText
+          )
+        } else if (checkLocationTwo) {
+          location = await page.$eval(
+            '#root div div div:nth-child(2) span',
+            (link) => link.innerText
+          )
+        }
+        if (!location) {
+          location = 'details not available'
+        }
+        container.push(location)
+      } catch (error) {
+        console.log(error)
+      }
+    }
+    resolve(container)
   })
 }
 
-const [posts, comments] = await fetchData()
-saveToDataBase(Post, posts)
-saveToDataBase(Comment, comments)
+async function getOneLocation(url) {
+  return new Promise(async function (resolve) {
+    try {
+      await page.goto(url)
+      await navigationPromise
+      let number = Math.floor(Math.random() * 3000) + 2000
+      await page.waitForTimeout(number)
+      let location
+      const checkLocationOne = await page.$('#living > div > div > div')
+      const checkLocationTwo = await page.$(
+        '#root div div div:nth-child(2) span'
+      )
+
+      if (checkLocationOne) {
+        location = await page.$eval(
+          '#living > div > div > div  ',
+          (link) => link.innerText
+        )
+      } else if (checkLocationTwo) {
+        location = await page.$eval(
+          '#root div div div:nth-child(2) span',
+          (link) => link.innerText
+        )
+      }
+      if (!location) {
+        location = 'details not available'
+      }
+
+      resolve(location)
+    } catch (error) {
+      console.log(error)
+    }
+  })
+}
+function presentLinkForDataBase(links) {
+  const mapfunc = (link) => ({
+    link: link,
+  })
+  return links.map(mapfunc)
+}
+
+async function fetchAndSaveData(url, tag) {
+  return new Promise(async function (resolve) {
+    try {
+      //get post and save to db
+      const post = await getSinglePost(url, tag)
+      saveToDataBase(Post, [post])
+
+      //get comments and save to db
+      const comments = await getOneComment(url, tag)
+      saveToDataBase(Comment, comments)
+      resolve()
+    } catch (error) {
+      console.log('error occured: ', error)
+    }
+  })
+}
+
+async function attachTagAndSaveToDb(urls) {
+  try {
+    return new Promise(async function (resolve) {
+      let x = 3000
+      for (const url of urls) {
+        let id = uuidv4()
+        await fetchAndSaveData(url, id)
+        console.log(`submitted  link ${x}..`)
+        x++
+        resolve()
+      }
+    })
+  } catch (error) {
+    console.log('error occured: ', error)
+  }
+}
+
+export async function runFunc() {
+  return new Promise(async (resolve) => {
+    await login('avenger.looting@gmail.com', 'Mudiaga101')
+    await navigationPromise
+
+    // Get links from group
+    // await getLinks(
+    //   'https://free.facebook.com/groups/104299046279187/?refid=27&_rdc=1&_rdr'
+    // )
+
+    // Share links into batches
+    const Dblinks = await getLinksFromDb()
+    const firstRun = Dblinks.slice(3000, 3200)
+    // const secondRun = Dblinks.slice(5, 8)
+
+    await attachTagAndSaveToDb(convert(firstRun))
+    resolve()
+  })
+}
+
+// GRAB DATA
+await runFunc()
+// TODO !!
+// set download status

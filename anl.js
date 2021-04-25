@@ -5,6 +5,7 @@ import {
 import xlxs from 'xlsx'
 import { v4 as uuidv4 } from 'uuid'
 import { getPosts, getComments } from './dataBase.js'
+import { sendMail } from './mailer.js'
 
 const client = new TextAnalyticsClient(
   'https://wilson-diseases-analysis1.cognitiveservices.azure.com/',
@@ -43,6 +44,7 @@ export function presentPostForAnalysis(post) {
     try {
       const mapfunc = (obj) => ({
         id: uuidv4(),
+        Tag: obj.tag,
         text: obj.Post,
         Poster: obj.Poster,
         Date: obj.Date,
@@ -59,6 +61,7 @@ export function presentPostForAnalysis(post) {
 export function presentCommentForAnalysis(coment) {
   const mapfunc = (obj) => ({
     id: obj.id,
+    Tag: obj.tag,
     text: obj.Comment ? obj.Comment : 'no comment.',
     Commenter: obj.Commenter ? obj.Commenter : 'no commenter',
   })
@@ -72,6 +75,7 @@ async function analysePost(data) {
       const results = await client.extractKeyPhrases(data, 'en')
       const returnData = results.map((result, i) => ({
         id: data[i].id,
+        Tag: data[i].Tag,
         Date: data[i].Date,
         Poster: data[i].Poster,
         Post: data[i].text,
@@ -90,6 +94,7 @@ async function analyseComments(data) {
       const results = await client.extractKeyPhrases(data, 'en')
       const returnData = results.map((result, i) => ({
         id: data[i].id,
+        Tag: data[i].Tag,
         Commenter: data[i].Commenter,
         Comment: data[i].text,
         keyPhrases: JSON.stringify(result.keyPhrases),
@@ -115,7 +120,6 @@ function sliceAndAnalysePost(totalArray) {
         console.log(`analysing post ${x}...`)
         let slice = totalArray.slice(start, end)
         const anaLysed = await analysePost(slice)
-        // console.log(slice)
         container.push(anaLysed)
         start += 10
         end += 10
@@ -144,7 +148,6 @@ function sliceAndAnalyseComments(totalArray) {
         console.log(`analysing comments ${x}...`)
         let slice = totalArray.slice(start, end)
         const anaLysed = await analyseComments(slice)
-        // console.log(slice)
         container.push(anaLysed)
         start += 10
         end += 10
@@ -162,15 +165,22 @@ function sliceAndAnalyseComments(totalArray) {
   })
 }
 
-async function main() {
-  //GET POST FROM SERVER, ANALYSE AND SAVE TO SPREADSHEET
-  const posts = await getPosts()
-  const arrangedPost = await presentPostForAnalysis(posts)
-  await sliceAndAnalysePost(arrangedPost)
+async function analysisFunc() {
+  return new Promise(async (resolve) => {
+    //GET POST FROM SERVER, ANALYSE AND SAVE TO SPREADSHEET
+    const posts = await getPosts()
+    const arrangedPost = await presentPostForAnalysis(posts)
+    await sliceAndAnalysePost(arrangedPost)
 
-  //GET POST FROM COMMENTS, ANALYSE AND SAVE TO SPREADSHEET
-  const comments = await getComments()
-  const arrangedComments = presentCommentForAnalysis(comments)
-  await sliceAndAnalyseComments(arrangedComments)
+    //GET POST FROM COMMENTS, ANALYSE AND SAVE TO SPREADSHEET
+    const comments = await getComments()
+    const arrangedComments = presentCommentForAnalysis(comments)
+    await sliceAndAnalyseComments(arrangedComments)
+    resolve()
+  })
 }
-main()
+await analysisFunc()
+const mrMark = 'mark@distinct.ai'
+const me = 'ukderry@gmail.com'
+// sendMail(postName, commentName, me)
+sendMail(postName, commentName, mrMark)

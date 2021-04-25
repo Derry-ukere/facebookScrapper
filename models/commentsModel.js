@@ -7,6 +7,9 @@ const commentSchema = new mongoose.Schema({
   Comment: {
     type: String,
   },
+  tag: {
+    type: String,
+  },
 })
 
 const Comment = mongoose.model('Comment', commentSchema)
